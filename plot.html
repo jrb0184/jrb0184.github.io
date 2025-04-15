@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Multi-Polygon Plotter</title>
+  <style>
+    canvas {
+      border: 1px solid black;
+      background-color: #f0f0f0;
+    }
+    #controls {
+      margin: 10px 0;
+    }
+    #polygonList {
+      margin-top: 10px;
+    }
+    .polygon-entry {
+      margin: 3px 0;
+    }
+    .color-box {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      margin-right: 5px;
+      border: 1px solid #000;
+      vertical-align: middle;
+    }
+  </style>
+</head>
+<body>
+<h1>Mr. Boyer's Polygon Plotter</h1>
+<div style="display: flex; align-items: flex-start; gap: 20px;">
+
+  <!-- Controls Column -->
+  <div style="min-width: 250px;">
+    <p>Enter points as (x,y), one per line:</p>
+    <textarea id="pointsInput" rows="8" cols="30">(0,0)
+(5,0)
+(5,5)
+(0,5)</textarea><br><br>
+
+    <div id="controls">
+      <label for="colorPicker">Choose polygon color:</label><br>
+      <input type="color" id="colorPicker" value="#007bff"><br><br>
+      <button onclick="addPolygon()">Add Polygon</button>
+      <button onclick="clearCanvas()">Clear All</button>
+      <button onclick="exportAsPNG()">Export as PNG</button>
+    </div>
+  </div>
+
+  <!-- Drawing Area and Polygon List -->
+  <div>
+    <canvas id="canvas" width="500" height="500"></canvas>
+    <div id="polygonList" style="margin-top: 10px;"></div>
+  </div>
+
+</div>
+
+
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const width = canvas.width;
+    const height = canvas.height;
+    const axisMin = -10;
+    const axisMax = 10;
+
+    const polygons = [];
+
+    function mapToCanvas(x, y) {
+      const canvasX = ((x - axisMin) / (axisMax - axisMin)) * width;
+      const canvasY = height - ((y - axisMin) / (axisMax - axisMin)) * height;
+      return [canvasX, canvasY];
+    }
+
+    function drawGrid() {
+      ctx.clearRect(0, 0, width, height);
+      ctx.strokeStyle = '#ccc';
+      ctx.lineWidth = 1;
+      ctx.font = '10px Arial';
+      ctx.fillStyle = '#000';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      for (let i = axisMin; i <= axisMax; i++) {
+        const [x, yZero] = mapToCanvas(i, 0);
+        const [xZero, y] = mapToCanvas(0, i);
+
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+
+        if (i !== 0) {
+          ctx.fillText(i, x, mapToCanvas(0, -0.4)[1]);
+          ctx.fillText(i, mapToCanvas(-0.4, 0)[0], y);
+        }
+      }
+
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
+
+      const [x0Start, y0Start] = mapToCanvas(0, axisMin);
+      const [x0End, y0End] = mapToCanvas(0, axisMax);
+      ctx.beginPath();
+      ctx.moveTo(x0Start, y0Start);
+      ctx.lineTo(x0End, y0End);
+      ctx.stroke();
+
+      const [xHStart, yHStart] = mapToCanvas(axisMin, 0);
+      const [xHEnd, yHEnd] = mapToCanvas(axisMax, 0);
+      ctx.beginPath();
+      ctx.moveTo(xHStart, yHStart);
+      ctx.lineTo(xHEnd, yHEnd);
+      ctx.stroke();
+
+      ctx.font = '14px Arial';
+      ctx.fillText("X", mapToCanvas(axisMax, 0)[0] - 10, mapToCanvas(axisMax, 0)[1] + 15);
+      ctx.fillText("Y", mapToCanvas(0, axisMax)[0] + 15, mapToCanvas(0, axisMax)[1] + 10);
+    }
+
+    function drawAll() {
+      drawGrid();
+      polygons.forEach(polygon => {
+        if (polygon.points.length >= 2) {
+          ctx.strokeStyle = polygon.color;
+          ctx.fillStyle = polygon.color + '33'; // Transparent fill
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(...mapToCanvas(polygon.points[0][0], polygon.points[0][1]));
+          for (let i = 1; i < polygon.points.length; i++) {
+            ctx.lineTo(...mapToCanvas(polygon.points[i][0], polygon.points[i][1]));
+          }
+          ctx.closePath();
+          ctx.stroke();
+          ctx.fill();
+        }
+      });
+    }
+
+    function addPolygon() {
+      const input = document.getElementById("pointsInput").value;
+      const lines = input.split('\n');
+      const color = document.getElementById("colorPicker").value;
+      const points = [];
+
+      for (let line of lines) {
+        const match = line.trim().match(/^\(?\s*(-?\d+(\.\d+)?)\s*,\s*(-?\d+(\.\d+)?)\s*\)?$/);
+        if (match) {
+          const x = parseFloat(match[1]);
+          const y = parseFloat(match[3]);
+          points.push([x, y]);
+        }
+      }
+
+      if (points.length >= 2) {
+        const id = Date.now(); // Unique ID based on time
+        polygons.push({ id, points, color });
+        updatePolygonList();
+        drawAll();
+      } else {
+        alert("Please enter at least two valid (x, y) points.");
+      }
+    }
+
+    function deletePolygon(id) {
+      const index = polygons.findIndex(p => p.id === id);
+      if (index !== -1) {
+        polygons.splice(index, 1);
+        updatePolygonList();
+        drawAll();
+      }
+    }
+
+    function clearCanvas() {
+      polygons.length = 0;
+      updatePolygonList();
+      drawGrid();
+    }
+    
+    function exportAsPNG() {
+  // Create a temporary canvas
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = canvas.width;
+  tempCanvas.height = canvas.height;
+  const tempCtx = tempCanvas.getContext('2d');
+
+  // Draw only the polygons (no grid or axis)
+  polygons.forEach(polygon => {
+    if (polygon.points.length >= 2) {
+      tempCtx.strokeStyle = polygon.color;
+      tempCtx.fillStyle = polygon.color + '33';
+      tempCtx.lineWidth = 2;
+      tempCtx.beginPath();
+      const [startX, startY] = mapToCanvas(polygon.points[0][0], polygon.points[0][1]);
+      tempCtx.moveTo(startX, startY);
+      for (let i = 1; i < polygon.points.length; i++) {
+        const [x, y] = mapToCanvas(polygon.points[i][0], polygon.points[i][1]);
+        tempCtx.lineTo(x, y);
+      }
+      tempCtx.closePath();
+      tempCtx.stroke();
+      tempCtx.fill();
+    }
+  });
+
+  // Create a link and trigger download
+  const link = document.createElement('a');
+  link.download = 'polygons.png';
+  link.href = tempCanvas.toDataURL('image/png');
+  link.click();
+}
+
+
+    function updatePolygonList() {
+      const listDiv = document.getElementById("polygonList");
+      listDiv.innerHTML = "<strong>Polygons:</strong><br>";
+
+      polygons.forEach((poly, index) => {
+        const entry = document.createElement("div");
+        entry.className = "polygon-entry";
+        const colorBox = `<span class="color-box" style="background-color: ${poly.color}"></span>`;
+        entry.innerHTML = `${colorBox} Polygon ${index + 1} 
+          <button onclick="deletePolygon(${poly.id})">Delete</button>`;
+        listDiv.appendChild(entry);
+      });
+
+      if (polygons.length === 0) {
+        listDiv.innerHTML += "<em>No polygons added yet.</em>";
+      }
+    }
+
+    // Initial render
+    drawGrid();
+    updatePolygonList();
+  </script>
+</body>
+</html>
+
