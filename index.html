@@ -44,16 +44,38 @@
       <input type="color" id="colorPicker" value="#007bff"><br><br>
       <button onclick="addPolygon()">Add Polygon</button>
       <button onclick="clearCanvas()">Clear All</button>
-      <button onclick="exportAsPNG()">Save Image</button>
+      <button onclick="exportAsPNG()">Export as PNG</button>
     </div>
   </div>
 
-  <!-- Drawing Area and Polygon List -->
+  <!-- Canvas + Polygon List -->
   <div>
     <canvas id="canvas" width="500" height="500"></canvas>
     <div id="polygonList" style="margin-top: 10px;"></div>
   </div>
 
+  <!-- Instructions Panel -->
+  <div id="instructions" style="
+    max-height: 500px;
+    overflow-y: auto;
+    border: 1px solid #ccc;
+    padding: 10px;
+    width: 250px;
+    background-color: #f9f9f9;
+    font-size: 14px;
+  ">
+    <h3>Instructions</h3>
+    <p>1. Enter one coordinate per line in the box on the left.</p>
+    <p>2. Coordinates should be in the format: <code>(x, y)</code> or <code>x,y</code>.</p>
+    <p>3. Use the color picker to select a polygon color.</p>
+    <p>4. Click <strong>Add Polygon</strong> to draw it on the grid.</p>
+    <p>5. Each polygon will be listed below the canvas with a delete button.</p>
+    <p>6. You can delete individual polygons without clearing the whole canvas.</p>
+    <p>7. Click <strong>Export as PNG</strong> to download only the polygons (no grid/axis).</p>
+    <p>8. Axis ranges are from -10 to 10 on both x and y.</p>
+    <p>9. Use decimal values if needed, like <code>(3.5, -7.2)</code>.</p>
+    <p>10. Have fun drawing!</p>
+  </div>
 </div>
 
 
