@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Fraction Tiles (Touch + Mouse)</title>
+  <style>
+    :root { --whole: 480px; --row: 44px; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body { margin: 0; font-family: system-ui, Arial, sans-serif; background:#fff; }
+
+    /* Workspace fills the page */
+    #workspace { position: relative; width: 100vw; height: 100vh; overflow: hidden; background: #fff; display:block; }
+
+    /* Vertical palette panel on the left (inside the canvas) */
+    #palette {
+      position: absolute; left: 8px; top: 8px; bottom: 8px;
+      width: calc(var(--whole) + 24px);
+      display: flex; flex-direction: column; gap: 8px;
+      align-items: flex-start; overflow-y: auto;
+      background: rgba(240,240,240,0.95);
+      padding: 8px;
+      border-right: 1px solid #ddd;
+      z-index: 10;
+    }
+
+    .palette-tile, .tile {
+      height: var(--row); line-height: var(--row);
+      color:#fff; font-weight:700; text-align:center; user-select:none; cursor:grab; border-radius:0;
+      border: 1px solid rgba(0,0,0,.25);
+      padding: 0 4px;
+      touch-action: none; /* prevent browser panning on touch */
+    }
+
+    .tile { position:absolute; }
+    .covering { opacity: .8; }
+    .covering:hover { opacity: 1; }
+
+    /* Floating clear button */
+    #clearBtn {
+      position: absolute; right: 12px; top: 12px;
+      padding: 8px 12px; border: 0; border-radius: 8px; cursor: pointer;
+      color:#fff; background:#d9534f; box-shadow: 0 2px 6px rgba(0,0,0,.2);
+      z-index: 11;
+    }
+    #clearBtn:hover { background:#c13f3b; }
+
+    /* On-drag visuals */
+    .dragging { z-index: 99999 !important; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <div id="workspace">
+    <div id="palette"></div>
+    <button id="clearBtn">Clear Canvas</button>
+  </div>
+
+  <script>
+    // ---- Config ----
+    const WHOLE_W = 480;                 // width of "1"
+    const ROW_H = 44;                    // tile height
+    const SNAP_THRESHOLD = 30;           // px
+    const DRAG_THRESHOLD = 4;            // px to distinguish click vs drag from palette
+    const FRACTIONS = [1,2,3,4,5,6,8,10,12,16]; // denominators (1 means whole)
+    const COLORS = { 1:'#2E86C1', 2:'#28B463', 3:'#AF7AC5', 4:'#F39C12', 5:'#E67E22', 6:'#00BCD4', 8:'#16A085', 10:'#D35400', 12:'#7D3C98', 16:'#C0392B' };
+
+    // ---- Elements ----
+    const palette = document.getElementById('palette');
+    const workspace = document.getElementById('workspace');
+    const clearBtn = document.getElementById('clearBtn');
+
+    // ---- State ----
+    let lastPlaced = null;  // last tile placed/clicked
+    let tileIdSeq = 1;      // for stable z-index tiebreak
+
+    // ---- Helpers ----
+    const labelFor = d => d === 1 ? '1' : `1/${d}`;
+    const valueFor = d => d === 1 ? 1 : 1/d;
+    const widthFor = d => Math.round(WHOLE_W / (d === 1 ? 1 : d));
+    const zForValue = (val, id) => 1000 + Math.round(val * 1000) * 10 + (id % 10);
+
+    function rectRelToWorkspace(el) {
+      const r = el.getBoundingClientRect();
+      const w = workspace.getBoundingClientRect();
+      return { left: r.left - w.left, top: r.top - w.top, right: r.right - w.left, bottom: r.bottom - w.top, width: r.width, height: r.height };
+    }
+    function overlap(a, b) { return !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom); }
+
+    // Dynamic font scaling
+    function applyFontSize(el){
+      const w = el.offsetWidth || parseFloat(getComputedStyle(el).width);
+      const size = Math.max(10, Math.min(18, Math.round(w * 0.25)));
+      el.style.fontSize = size + 'px';
+    }
+
+    // Create a tile in the workspace
+    function createWorkspaceTile(den) {
+      const div = document.createElement('div');
+      div.className = 'tile';
+      const label = labelFor(den);
+      div.textContent = label;
+      div.title = label; // tooltip for tiny tiles
+      div.style.width = widthFor(den) + 'px';
+      div.style.height = ROW_H + 'px';
+      div.style.background = COLORS[den] || '#666';
+      div.dataset.den = String(den);
+      div.dataset.val = String(valueFor(den));
+      div.dataset.id = String(tileIdSeq++);
+      div.style.left = '10px';
+      div.style.top = '10px';
+      div.style.zIndex = String(zForValue(valueFor(den), Number(div.dataset.id)));
+      workspace.appendChild(div);
+      requestAnimationFrame(() => applyFontSize(div));
+      makeTileDraggable(div);       // mouse & pointer
+      makeTilePointerDraggable(div); // touch/pen via Pointer Events
+      return div;
+    }
+
+    // Mouse drag handler (kept for desktop browsers)
+    function makeTileDraggable(tile) {
+      let dragging = false; let offsetX = 0, offsetY = 0;
+      tile.addEventListener('mousedown', (e) => {
+        dragging = true;
+        const wr = workspace.getBoundingClientRect();
+        offsetX = e.clientX - (wr.left + parseFloat(tile.style.left));
+        offsetY = e.clientY - (wr.top + parseFloat(tile.style.top));
+        tile.classList.add('dragging');
+
+        const move = (ev) => {
+          if (!dragging) return;
+          const wr2 = workspace.getBoundingClientRect();
+          tile.style.left = Math.round(ev.clientX - wr2.left - offsetX) + 'px';
+          tile.style.top  = Math.round(ev.clientY - wr2.top  - offsetY) + 'px';
+        };
+        const up = () => {
+          if (!dragging) return;
+          dragging = false;
+          document.removeEventListener('mousemove', move);
+          document.removeEventListener('mouseup', up);
+          tile.classList.remove('dragging');
+          snapTileSmart(tile);
+          adjustOverlapVisuals();
+          lastPlaced = tile;
+        };
+        document.addEventListener('mousemove', move);
+        document.addEventListener('mouseup', up);
+      });
+    }
+
+    // Pointer-event drag for placed tiles (touch-friendly)
+    function makeTilePointerDraggable(tile){
+      tile.addEventListener('pointerdown', (e)=>{
+        if (e.pointerType === 'mouse') return; // mouse handled above
+        e.preventDefault();
+        tile.setPointerCapture?.(e.pointerId);
+        const wr = workspace.getBoundingClientRect();
+        const offsetX = e.clientX - (wr.left + parseFloat(tile.style.left));
+        const offsetY = e.clientY - (wr.top  + parseFloat(tile.style.top));
+        tile.classList.add('dragging');
+        const move = (ev)=>{
+          const wr2 = workspace.getBoundingClientRect();
+          tile.style.left = Math.round(ev.clientX - wr2.left - offsetX) + 'px';
+          tile.style.top  = Math.round(ev.clientY - wr2.top  - offsetY) + 'px';
+        };
+        const up = (ev)=>{
+          tile.removeEventListener('pointermove', move);
+          tile.removeEventListener('pointerup', up);
+          tile.releasePointerCapture?.(e.pointerId);
+          tile.classList.remove('dragging');
+          snapTileSmart(tile);
+          adjustOverlapVisuals();
+          lastPlaced = tile;
+        };
+        tile.addEventListener('pointermove', move, {passive:false});
+        tile.addEventListener('pointerup', up, {passive:false});
+      }, {passive:false});
+    }
+
+    function addClickPlacement(den) {
+      const t = createWorkspaceTile(den);
+      if (lastPlaced) {
+        t.style.left = (parseInt(lastPlaced.style.left, 10) + lastPlaced.offsetWidth) + 'px';
+        t.style.top  = lastPlaced.style.top;
+      }
+      lastPlaced = t;
+      adjustOverlapVisuals();
+    }
+
+    // Build the vertical palette (single source of truth)
+    function buildPalette(){
+      palette.innerHTML = ''; // ensure no duplicates
+      FRACTIONS.forEach(den => {
+        const p = document.createElement('div');
+        p.className = 'palette-tile';
+        p.style.width = widthFor(den) + 'px';
+        p.style.height = ROW_H + 'px';
+        p.style.background = COLORS[den] || '#666';
+        p.dataset.den = String(den);
+        p.textContent = labelFor(den);
+        requestAnimationFrame(() => applyFontSize(p));
+        // (mouse drag handled by unified Pointer Events below)
+        // Unified Pointer Events for all inputs (mouse, touch, pen)
+        p.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          const startX = e.clientX, startY = e.clientY;
+          let dragStarted = false; let tempTile = null;
+
+          const onMove = (ev) => {
+            const dx = Math.abs(ev.clientX - startX);
+            const dy = Math.abs(ev.clientY - startY);
+            if (!dragStarted && (dx > DRAG_THRESHOLD || dy > DRAG_THRESHOLD)) {
+              dragStarted = true;
+              tempTile = createWorkspaceTile(den);
+              const wr = workspace.getBoundingClientRect();
+              const halfW = tempTile.offsetWidth / 2, halfH = tempTile.offsetHeight / 2;
+              tempTile.style.left = Math.round(ev.clientX - wr.left - halfW) + 'px';
+              tempTile.style.top  = Math.round(ev.clientY - wr.top  - halfH) + 'px';
+              tempTile.classList.add('dragging');
+            }
+            if (dragStarted && tempTile) {
+              const wr2 = workspace.getBoundingClientRect();
+              const halfW = tempTile.offsetWidth / 2, halfH = tempTile.offsetHeight / 2;
+              tempTile.style.left = Math.round(ev.clientX - wr2.left - halfW) + 'px';
+              tempTile.style.top  = Math.round(ev.clientY - wr2.top  - halfH) + 'px';
+            }
+          };
+
+          const onUp = (ev) => {
+            document.removeEventListener('pointermove', onMove, {passive:false});
+            document.removeEventListener('pointerup', onUp, {passive:false});
+            // suppress the synthetic click that follows pointerup to avoid double-add
+            p._suppressNextClick = true;
+
+            if (dragStarted && tempTile) {
+              tempTile.classList.remove('dragging');
+              snapTileSmart(tempTile); adjustOverlapVisuals(); lastPlaced = tempTile; tempTile = null;
+            } else {
+              // tap/click: append next to last placed
+              addClickPlacement(den);
+            }
+          };
+
+          document.addEventListener('pointermove', onMove, {passive:false});
+          document.addEventListener('pointerup', onUp, {passive:false});
+        }, {passive:false});
+
+        // Swallow the subsequent synthetic click so we don't double-add
+        p.addEventListener('click', (e) => {
+          if (p._suppressNextClick) { e.preventDefault(); p._suppressNextClick = false; return; }
+          // Pointer handler already handled both drag and tap-to-append
+          e.preventDefault();
+        });
+        palette.appendChild(p);
+      });
+    }
+
+    // ---- Smart snapping: vertical decision THEN horizontal, different anchors allowed ----
+    function snapTileSmart(tile) {
+      const others = [...workspace.querySelectorAll('.tile')].filter(t => t !== tile);
+      if (others.length === 0) return;
+
+      const tR = rectRelToWorkspace(tile);
+
+      // 1) Vertical anchor & target Y (above / below / inside)
+      let vBest = null; // {y, dist, mode, anchor}
+      others.forEach(o => {
+        const r = rectRelToWorkspace(o);
+
+        const dTopToBottom   = Math.abs(tR.top    - r.bottom);
+        const dBottomToTop   = Math.abs(tR.bottom - r.top);
+        const dTopToTop      = Math.abs(tR.top    - r.top);
+        const dBottomToBottom= Math.abs(tR.bottom - r.bottom);
+
+        const vertOverlap = !(tR.bottom <= r.top || tR.top >= r.bottom);
+
+        const candidates = [
+          { mode:'above',  dist: dBottomToTop,    y: r.top - tR.height,  anchor:o },
+          { mode:'below',  dist: dTopToBottom,    y: r.bottom,           anchor:o },
+        ];
+        if (vertOverlap) {
+          candidates.push({ mode:'inside', dist: Math.min(dTopToTop, dBottomToBottom), y: r.top, anchor:o });
+        }
+
+        candidates.forEach(c => { if (c.dist <= SNAP_THRESHOLD && (!vBest || c.dist < vBest.dist)) vBest = c; });
+      });
+
+      // 2) Horizontal anchor & target X (left/right align or end-to-end)
+      let hBest = null; // {x, dist, type, anchor}
+      others.forEach(o => {
+        const r = rectRelToWorkspace(o);
+        const dLtoR = Math.abs(tR.left  - r.right);
+        const dRtoL = Math.abs(tR.right - r.left);
+        const dLtoL = Math.abs(tR.left  - r.left);
+        const dRtoR = Math.abs(tR.right - r.right);
+        const candidates = [
+          { type:'L-R', dist:dLtoR, x: r.right },
+          { type:'R-L', dist:dRtoL, x: r.left - tR.width },
+          { type:'L-L', dist:dLtoL, x: r.left },
+          { type:'R-R', dist:dRtoR, x: r.right - tR.width },
+        ];
+        candidates.forEach(c => { if (c.dist <= SNAP_THRESHOLD && (!hBest || c.dist < hBest.dist)) hBest = { ...c, anchor:o }; });
+      });
+
+      let newLeft = parseFloat(tile.style.left);
+      let newTop = parseFloat(tile.style.top);
+      if (vBest) newTop = Math.round(vBest.y);
+      if (hBest) newLeft = Math.round(hBest.x);
+
+      if (vBest && !hBest) {
+        const r = rectRelToWorkspace(vBest.anchor);
+        const dLtoL = Math.abs(tR.left  - r.left);
+        const dRtoR = Math.abs(tR.right - r.right);
+        if (Math.min(dLtoL, dRtoR) <= SNAP_THRESHOLD) newLeft = dLtoL <= dRtoR ? Math.round(r.left) : Math.round(r.right - tR.width);
+      }
+
+      if (hBest && !vBest) {
+        const r = rectRelToWorkspace(hBest.anchor);
+        const dTtoT = Math.abs(tR.top    - r.top);
+        const dBtoB = Math.abs(tR.bottom - r.bottom);
+        const dTtoB = Math.abs(tR.top    - r.bottom);
+        const dBtoT = Math.abs(tR.bottom - r.top);
+        const verticalChoices = [
+          {mode:'above', dist:dBtoT, y: r.top - tR.height},
+          {mode:'below', dist:dTtoB, y: r.bottom},
+          {mode:'inside', dist:Math.min(dTtoT,dBtoB), y:r.top}
+        ].filter(c => c.dist <= SNAP_THRESHOLD);
+        if (verticalChoices.length) newTop = Math.round(verticalChoices.sort((a,b)=>a.dist-b.dist)[0].y);
+      }
+
+      tile.style.left = newLeft + 'px';
+      tile.style.top  = newTop + 'px';
+    }
+
+    // ---- Overlap visual rule: larger fraction goes on top + semi-transparent ----
+    function adjustOverlapVisuals() {
+      const tiles = [...workspace.querySelectorAll('.tile')];
+      tiles.forEach(t => { t.classList.remove('covering'); t.style.opacity = '1'; });
+      tiles.forEach(t => { t.style.zIndex = String(zForValue(Number(t.dataset.val), Number(t.dataset.id))); });
+      for (let i=0;i<tiles.length;i++){
+        for (let j=i+1;j<tiles.length;j++){
+          const a = tiles[i], b = tiles[j];
+          const r1 = rectRelToWorkspace(a), r2 = rectRelToWorkspace(b);
+          if (overlap(r1, r2)) {
+            const va = Number(a.dataset.val), vb = Number(b.dataset.val);
+            if (va > vb) {
+              a.classList.add('covering'); a.style.opacity = '.8';
+              if (parseInt(a.style.zIndex,10) <= parseInt(b.style.zIndex,10)) a.style.zIndex = String(parseInt(b.style.zIndex,10)+1);
+            } else if (vb > va) {
+              b.classList.add('covering'); b.style.opacity = '.8';
+              if (parseInt(b.style.zIndex,10) <= parseInt(a.style.zIndex,10)) b.style.zIndex = String(parseInt(a.style.zIndex,10)+1);
+            }
+          }
+        }
+      }
+    }
+
+    // Clear only placed tiles, keep palette
+    clearBtn.addEventListener('click', () => {
+      [...workspace.querySelectorAll('.tile')].forEach(n => n.remove());
+      lastPlaced = null;
+    });
+
+    // Build palette immediately (no DOMContentLoaded dependency)
+    buildPalette();
+  </script>
+</body>
+</html>
