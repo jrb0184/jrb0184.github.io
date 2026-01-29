@@ -1,0 +1,575 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Coordinate Treasure Hunt</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #121a33;
+      --text: #e8ecff;
+      --muted: #aab3d6;
+      --grid: rgba(255,255,255,0.12);
+      --gridBold: rgba(255,255,255,0.22);
+      --axis: rgba(255,255,255,0.55);
+      --point: #7cf7c1;
+      --arrow: #ffd36e;
+      --bad: #ff6b6b;
+      --good: #7cf7c1;
+      --btn: #2a3a7a;
+      --btn2: #1f2c5a;
+      --shadow: 0 10px 30px rgba(0,0,0,0.35);
+    }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: radial-gradient(1200px 700px at 30% 20%, #172252 0%, var(--bg) 60%);
+      color: var(--text);
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+    }
+
+    .app {
+      width: min(1100px, 100%);
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 16px;
+      align-items: start;
+    }
+
+    @media (max-width: 920px) {
+      .app { grid-template-columns: 1fr; }
+    }
+
+    .boardWrap {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 14px;
+    }
+
+    canvas {
+      width: 100%;
+      height: auto;
+      display: block;
+      border-radius: 12px;
+      background: rgba(0,0,0,0.25);
+    }
+
+    .panel {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+    }
+
+    h1 {
+      font-size: 18px;
+      margin: 0;
+      letter-spacing: 0.2px;
+    }
+
+    .sub {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+      margin-top: -6px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+
+    label {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    input[type="text"]{
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.16);
+      background: rgba(0,0,0,0.25);
+      color: var(--text);
+      outline: none;
+      font-size: 15px;
+    }
+    input[type="text"]:focus{
+      border-color: rgba(124,247,193,0.65);
+      box-shadow: 0 0 0 4px rgba(124,247,193,0.12);
+    }
+
+    .btnRow {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    button{
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: linear-gradient(180deg, var(--btn) 0%, var(--btn2) 100%);
+      color: var(--text);
+      cursor: pointer;
+      font-weight: 650;
+      letter-spacing: 0.2px;
+    }
+    button.secondary{
+      background: rgba(255,255,255,0.06);
+    }
+    button:active{
+      transform: translateY(1px);
+    }
+
+    .statGrid{
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .stat{
+      background: rgba(0,0,0,0.22);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 14px;
+      padding: 10px;
+    }
+    .stat .k{
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .stat .v{
+      font-size: 18px;
+      font-weight: 750;
+      margin-top: 2px;
+    }
+
+    .msg{
+      min-height: 18px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .msg.bad{ color: var(--bad); }
+    .msg.good{ color: var(--good); }
+
+    .hint {
+      background: rgba(0,0,0,0.22);
+      border: 1px dashed rgba(255,255,255,0.16);
+      border-radius: 14px;
+      padding: 10px;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      place-items: center;
+      background: rgba(0,0,0,0.58);
+      backdrop-filter: blur(6px);
+      padding: 18px;
+    }
+    .overlay.show{ display: grid; }
+
+    .winCard {
+      width: min(520px, 100%);
+      background: rgba(18,26,51,0.95);
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+      padding: 18px;
+      text-align: center;
+    }
+    .winCard h2{
+      margin: 0 0 6px 0;
+      font-size: 26px;
+      letter-spacing: 0.2px;
+    }
+    .winCard p{
+      margin: 6px 0 14px 0;
+      color: var(--muted);
+    }
+    .bigScore{
+      font-size: 48px;
+      font-weight: 900;
+      margin: 4px 0 10px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="boardWrap">
+      <canvas id="board" width="900" height="900" aria-label="Coordinate Plane"></canvas>
+    </div>
+
+    <div class="panel">
+      <h1>Treasure Hunt: Coordinate Plane</h1>
+      <div class="sub">
+        Enter an ordered pair like <b>3, -5</b>. Each guess places a point, and an arrow points toward the hidden treasure.
+      </div>
+
+      <div class="statGrid">
+        <div class="stat">
+          <div class="k">Guesses</div>
+          <div class="v" id="guessCount">0</div>
+        </div>
+        <div class="stat">
+          <div class="k">Board</div>
+          <div class="v">-10…10</div>
+        </div>
+      </div>
+
+      <div class="row">
+        <label for="coordInput">Your coordinate (x, y)</label>
+        <input id="coordInput" type="text" inputmode="text" placeholder="e.g., 3, -5" autocomplete="off" />
+        <div class="msg" id="msg"></div>
+      </div>
+
+      <div class="btnRow">
+        <button id="submitBtn">Place Point</button>
+        <button class="secondary" id="newBtn">New Game</button>
+      </div>
+
+      <div class="hint">
+        <b>Rules</b><br/>
+        • Coordinates must be integers from -10 to 10.<br/>
+        • Each guess stays on the plane.<br/>
+        • You win when your point matches the treasure exactly.
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="overlay">
+    <div class="winCard">
+      <h2>🎉 You found the treasure!</h2>
+      <p>Your score (number of guesses):</p>
+      <div class="bigScore" id="finalScore">0</div>
+      <button id="playAgainBtn">Play Again</button>
+    </div>
+  </div>
+
+<script>
+(() => {
+  // ----- Game constants -----
+  const MIN = -10, MAX = 10;
+  const GRID_STEP = 1;
+
+  // Canvas setup (high-DPI friendly)
+  const canvas = document.getElementById('board');
+  const ctx = canvas.getContext('2d');
+
+  function fitCanvasToCSS() {
+    // Keep the canvas square and crisp.
+    const rect = canvas.getBoundingClientRect();
+    const size = Math.floor(Math.min(rect.width, window.innerHeight * 0.78));
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+
+    canvas.style.width = size + 'px';
+    canvas.style.height = size + 'px';
+    canvas.width = Math.floor(size * dpr);
+    canvas.height = Math.floor(size * dpr);
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // draw in CSS pixels
+    redraw();
+  }
+
+  // ----- State -----
+  let treasure = randomTreasure();
+  let guesses = []; // {x,y}
+  let guessCount = 0;
+
+  // ----- UI elements -----
+  const coordInput = document.getElementById('coordInput');
+  const submitBtn = document.getElementById('submitBtn');
+  const newBtn = document.getElementById('newBtn');
+  const guessCountEl = document.getElementById('guessCount');
+  const msgEl = document.getElementById('msg');
+  const overlay = document.getElementById('overlay');
+  const finalScore = document.getElementById('finalScore');
+  const playAgainBtn = document.getElementById('playAgainBtn');
+
+  function setMsg(text, kind="") {
+    msgEl.className = "msg" + (kind ? " " + kind : "");
+    msgEl.textContent = text;
+  }
+
+  function randomInt(min, max) {
+    // inclusive
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+
+  function randomTreasure() {
+    // Avoid (0,0) sometimes? Not required. Keep it simple and fully random.
+    return { x: randomInt(MIN, MAX), y: randomInt(MIN, MAX) };
+  }
+
+  function resetGame() {
+    treasure = randomTreasure();
+    guesses = [];
+    guessCount = 0;
+    guessCountEl.textContent = "0";
+    coordInput.value = "";
+    setMsg("New treasure hidden. Start guessing!");
+    overlay.classList.remove('show');
+    redraw();
+    coordInput.focus();
+  }
+
+  // ----- Coordinate transforms -----
+  function boardRect() {
+    const rect = canvas.getBoundingClientRect();
+    return { w: rect.width, h: rect.height };
+  }
+
+  function unitToPx() {
+    // Map -10..10 to full canvas, with a little padding.
+    const { w, h } = boardRect();
+    const pad = 32; // CSS pixels
+    const usable = Math.min(w, h) - pad * 2;
+    const units = (MAX - MIN);
+    return { pad, scale: usable / units };
+  }
+
+  function toCanvas(x, y) {
+    const { w, h } = boardRect();
+    const { pad, scale } = unitToPx();
+    // MIN maps to pad, MAX maps to w-pad
+    const cx = pad + (x - MIN) * scale;
+    // Invert y (canvas y down)
+    const cy = h - (pad + (y - MIN) * scale);
+    return { cx, cy };
+  }
+
+  // ----- Drawing helpers -----
+  function clear() {
+    const { w, h } = boardRect();
+    ctx.clearRect(0, 0, w, h);
+  }
+
+  function drawGrid() {
+    const { w, h } = boardRect();
+    const { pad, scale } = unitToPx();
+
+    // Background
+    ctx.fillStyle = "rgba(0,0,0,0.20)";
+    ctx.fillRect(0, 0, w, h);
+
+    // Grid lines
+    for (let v = MIN; v <= MAX; v += GRID_STEP) {
+      const isAxis = (v === 0);
+      const isBold = true; // labeled at 1-unit intervals as requested
+
+      // vertical line at x=v
+      {
+        const { cx } = toCanvas(v, 0);
+        ctx.beginPath();
+        ctx.moveTo(cx, pad);
+        ctx.lineTo(cx, h - pad);
+        ctx.strokeStyle = isAxis ? getCSS('--axis') : (isBold ? getCSS('--gridBold') : getCSS('--grid'));
+        ctx.lineWidth = isAxis ? 2 : 1;
+        ctx.stroke();
+      }
+
+      // horizontal line at y=v
+      {
+        const { cy } = toCanvas(0, v);
+        ctx.beginPath();
+        ctx.moveTo(pad, cy);
+        ctx.lineTo(w - pad, cy);
+        ctx.strokeStyle = isAxis ? getCSS('--axis') : (isBold ? getCSS('--gridBold') : getCSS('--grid'));
+        ctx.lineWidth = isAxis ? 2 : 1;
+        ctx.stroke();
+      }
+    }
+
+    // Labels at each integer along axes
+    ctx.font = "12px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+    ctx.fillStyle = "rgba(255,255,255,0.80)";
+
+    // x labels along x-axis (y=0)
+    for (let x = MIN; x <= MAX; x++) {
+      const { cx, cy } = toCanvas(x, 0);
+      // Slight offset so it doesn't overlap the axis
+      const yOff = (x === 0) ? 18 : 16;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText(String(x), cx, cy + yOff);
+    }
+
+    // y labels along y-axis (x=0)
+    for (let y = MIN; y <= MAX; y++) {
+      const { cx, cy } = toCanvas(0, y);
+      const xOff = (y === 0) ? -18 : -10;
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      ctx.fillText(String(y), cx + xOff, cy);
+    }
+
+    // Border
+    ctx.strokeStyle = "rgba(255,255,255,0.10)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(pad, pad, w - pad*2, h - pad*2);
+  }
+
+  function drawPoint(px, py, color) {
+    ctx.beginPath();
+    ctx.arc(px, py, 5, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    // Small outline
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(0,0,0,0.35)";
+    ctx.stroke();
+  }
+
+  function drawArrow(from, to, color) {
+    // Draw a short arrow in the direction of "to", originating at "from"
+    const dx = to.cx - from.cx;
+    const dy = to.cy - from.cy;
+    const len = Math.hypot(dx, dy);
+
+    if (len < 1) return;
+
+    // Arrow length in pixels (small)
+    const arrowLen = 26;
+    const ux = dx / len;
+    const uy = dy / len;
+
+    const startX = from.cx;
+    const startY = from.cy;
+    const endX = from.cx + ux * arrowLen;
+    const endY = from.cy + uy * arrowLen;
+
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.lineTo(endX, endY);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.stroke();
+
+    // Arrow head
+    const headLen = 10;
+    const angle = Math.atan2(uy, ux);
+    const a1 = angle + Math.PI * 0.85;
+    const a2 = angle - Math.PI * 0.85;
+
+    ctx.beginPath();
+    ctx.moveTo(endX, endY);
+    ctx.lineTo(endX + Math.cos(a1) * headLen, endY + Math.sin(a1) * headLen);
+    ctx.moveTo(endX, endY);
+    ctx.lineTo(endX + Math.cos(a2) * headLen, endY + Math.sin(a2) * headLen);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
+
+  function redraw() {
+    clear();
+    drawGrid();
+
+    // Draw each guess point and its arrow to the treasure
+    const t = toCanvas(treasure.x, treasure.y);
+
+    for (const g of guesses) {
+      const p = toCanvas(g.x, g.y);
+      drawPoint(p.cx, p.cy, getCSS('--point'));
+      drawArrow(p, t, getCSS('--arrow'));
+    }
+  }
+
+  function getCSS(varName) {
+    return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+  }
+
+  // ----- Parsing -----
+  function parseCoord(text) {
+    // Accept formats: "3, -5" or "(3, -5)" or "3 -5" (space) or "3,-5"
+    const cleaned = text.trim()
+      .replace(/[()]/g, '')
+      .replace(/\s+/g, ' ')
+      .replace(/\s*,\s*/g, ',');
+    if (!cleaned) return null;
+
+    let parts;
+    if (cleaned.includes(',')) {
+      parts = cleaned.split(',');
+    } else {
+      parts = cleaned.split(' ');
+    }
+    if (parts.length !== 2) return null;
+
+    const x = Number(parts[0]);
+    const y = Number(parts[1]);
+    if (!Number.isInteger(x) || !Number.isInteger(y)) return null;
+    if (x < MIN || x > MAX || y < MIN || y > MAX) return null;
+
+    return { x, y };
+  }
+
+  // ----- Game actions -----
+  function submitGuess() {
+    const val = coordInput.value;
+    const pt = parseCoord(val);
+
+    if (!pt) {
+      setMsg("Please enter two integers from -10 to 10 (example: 3, -5).", "bad");
+      return;
+    }
+
+    guessCount += 1;
+    guessCountEl.textContent = String(guessCount);
+
+    guesses.push(pt);
+    redraw();
+
+    if (pt.x === treasure.x && pt.y === treasure.y) {
+      setMsg("Correct! You found it.", "good");
+      finalScore.textContent = String(guessCount);
+      overlay.classList.add('show');
+      return;
+    } else {
+      setMsg(`Point placed at (${pt.x}, ${pt.y}). Follow the arrow!`, "");
+      coordInput.select();
+    }
+  }
+
+  // ----- Events -----
+  submitBtn.addEventListener('click', submitGuess);
+  coordInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submitGuess();
+  });
+
+  newBtn.addEventListener('click', resetGame);
+  playAgainBtn.addEventListener('click', resetGame);
+
+  window.addEventListener('resize', () => {
+    fitCanvasToCSS();
+  });
+
+  // ----- Init -----
+  setMsg("Treasure hidden. Enter your first coordinate!");
+  // Ensure canvas CSS size is known before sizing
+  requestAnimationFrame(fitCanvasToCSS);
+
+  // Expose for debugging if you want (optional)
+  window.__treasureDebug = {
+    reveal: () => treasure,
+    set: (x,y) => { treasure = {x,y}; redraw(); }
+  };
+})();
+</script>
+</body>
+</html>
+
